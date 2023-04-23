@@ -2,35 +2,53 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class MnistNet(nn.Module):
+class MNIST_Net(nn.Module):
     def __init__(self):
-        super(MnistNet, self).__init__()
-        self.conv = nn.Sequential(
-            # [BATCH_SIZE, 1, 28, 28]
-            nn.Conv2d(1, 32, 5, 1, 2),
-            # [BATCH_SIZE, 32, 28, 28]
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            # [BATCH_SIZE, 32, 14, 14]
-            nn.Conv2d(32, 32, 5, 1, 2),
-            # [BATCH_SIZE, 32, 14, 14]
-            nn.ReLU(),
-            nn.MaxPool2d(2)
-            # [BATCH_SIZE, 32, 7, 7]
-        )
-        self.fc1 = nn.Linear(32 * 7 * 7, 256)
-        self.fc2 = nn.Linear(256, 10)
+        super(MNIST_Net, self).__init__()
+        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
+        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
+        #self.conv2_drop = nn.Dropout2d()
+        self.fc1 = nn.Linear(320, 50)
+        self.fc2 = nn.Linear(50, 10)
 
     def forward(self, x):
-        x = self.conv(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc1(x)
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = F.relu(F.max_pool2d(self.conv2(x), 2))
+        x = x.view(-1, 320)
+        x = F.relu(self.fc1(x))
+        x = F.dropout(x, training=self.training)
+        x = self.fc2(x)
+        return F.log_softmax(x, dim = 1), x # output both log_prob and unnormalized logits.
 
-        # insert the prototype
-        x1 = x
-        y = self.fc2(x)
-        return y
+import torch.nn as nn
 
+class InverseMNISTNet(nn.Module):
+    def __init__(self):
+        super(InverseMNISTNet, self).__init__()
+        self.fc1 = nn.Linear(10, 50)
+        self.fc2 = nn.Linear(50, 320)
+        self.deconv1 = nn.ConvTranspose2d(20, 10, kernel_size=5)
+        self.deconv2 = nn.ConvTranspose2d(10, 1, kernel_size=5)
+    
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = x.view(-1, 20, 4, 4)
+        x = F.interpolate(x, scale_factor=2, mode='nearest')
+        x = self.deconv1(x)
+        x = F.relu(x)
+        x = F.interpolate(x, scale_factor=2, mode='nearest')
+        x = self.deconv2(x)
+        return x
+
+
+
+if __name__ == '__main__':
+    x = torch.zeros((1,10))
+    net = InverseMNISTNet()
+    x = net(x)
+    print(net.parameters)
+    print(x.shape)
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -313,3 +331,4 @@ def vgg19():
 def vgg19_bn():
     """VGG 19-layer model (configuration 'E') with batch normalization"""
     return VGG(make_layers(cfg['E'], batch_norm=True))
+

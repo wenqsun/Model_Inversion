@@ -8,7 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
 import torch.nn.functional as F
 from torch.autograd import Variable
-from model import MnistNet
+from model import MNIST_Net
 
 
 def same_seeds(seed):
@@ -29,13 +29,13 @@ same_seeds(2023)
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 train_file = datasets.MNIST(
-    root='./dataset/',
+    root='../dataset/',
     train=True,
     transform=transforms.ToTensor(),
     download=True
 )
 test_file = datasets.MNIST(
-    root='./dataset/',
+    root='../dataset/',
     train=False,
     transform=transforms.ToTensor()
 )
@@ -55,7 +55,7 @@ test_loader = DataLoader(
     shuffle=False
 )
 
-model = MnistNet().to(device)
+model = MNIST_Net().to(device)
 optim = torch.optim.Adam(model.parameters(), LR)
 lossf = nn.CrossEntropyLoss()
 
@@ -64,7 +64,7 @@ for epoch in range(EPOCH):
         optim.zero_grad()
         data = data.to(device)
         targets = targets.to(device)
-        output = model(data)
+        _, output = model(data)
         loss = lossf(output, targets)
         acc = (output.argmax(1) == targets).sum().item()/data.size()[0]
         loss.backward()
@@ -73,7 +73,7 @@ for epoch in range(EPOCH):
           for image, label in test_loader:
             image = image.to(device)
             label = label.to(device)
-            output = model(image)
+            _, output = model(image)
             test_loss = lossf(output, label)
             test_acc = (output.argmax(1) == label).sum().item()/image.size()[0]
           print(
@@ -84,3 +84,5 @@ for epoch in range(EPOCH):
               f'Testing_LOSS: {test_loss.item():.4f}',
               f'Testing_ACC: {test_acc:.4f}',
           )
+
+torch.save(model.state_dict(), 'MNIST_Net.pth')
