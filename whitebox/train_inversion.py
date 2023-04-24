@@ -41,18 +41,26 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
     gt_labels = torch.zeros(args.batch_size, 10).cuda()
     for i in range(args.batch_size):
         gt_labels[i][labels[i]] = 1       # generate one-hot labels
+    print('The ground truth labels are: {}'.format(gt_labels))
     z = torch.randn(args.batch_size, args.z_dim).cuda()
     z = Variable(z, requires_grad=True).cuda()
 
+    fake_image = Generator(z)
+    # save the original image
+    original_image = fake_image.clone().detach()
+    tvls.save_image(original_image, 'result/inversion_image/original_image.png', normalize=True, range=(-1, 1))
+
     optimizer = optim.Adam([z], lr=args.lr, betas=(0.5, 0.999))
+    criterion = nn.CrossEntropyLoss()
     for epoch in range(args.num_epoch):
         optimizer.zero_grad()
         fake_image = Generator(z)
-        fake_out,_ = classifier(fake_image)
+        _, fake_out = classifier(fake_image)
 
         D_fake = Disc(fake_image.view(-1, 28*28))     # prior result for discriminator
         prior_loss = -torch.mean(D_fake)    # prior loss
-        gt_loss = F.binary_cross_entropy_with_logits(fake_out, gt_labels)     # gt loss
+        # print('The fake_out is: {}'.format(fake_out))
+        gt_loss = criterion(fake_out, gt_labels)     # gt loss
         loss = prior_loss + args.lambda_gt * gt_loss
         loss.backward()
         optimizer.step()
@@ -67,7 +75,7 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=10)
-    parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--lr', type=float, default=0.0005)
     parser.add_argument('--z_dim', type=int, default=10)
     parser.add_argument('--num_epoch', type=int, default=100)
     parser.add_argument('--lambda_gt', type=int, default=100)
