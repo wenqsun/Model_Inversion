@@ -48,11 +48,12 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
     fake_image = Generator(z)
     # save the original image
     original_image = fake_image.clone().detach()
-    tvls.save_image(original_image, 'result/inversion_image/original_image.png', normalize=True, range=(-1, 1))
+    tvls.save_image(original_image, 'result/inversion_EMNIST_image/original_image.png', normalize=False, range=(-1, 1))
 
     # optimizer = optim.Adam([z], lr=args.lr, betas=(0.5, 0.999))
     optimizer = optim.Adam(Generator.parameters(), lr=args.lr, betas=(0.5, 0.999))      # optimizer for generator
     criterion = nn.CrossEntropyLoss()
+    min_loss = 1000
     for epoch in range(args.num_epoch):
         optimizer.zero_grad()
         fake_image = Generator(z)
@@ -62,6 +63,9 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
         prior_loss = -torch.mean(D_fake)    # prior loss
         # print('The fake_out is: {}'.format(fake_out))
         gt_loss = criterion(fake_out, gt_labels)     # gt loss
+        if gt_loss < min_loss:
+            min_loss = gt_loss
+            tvls.save_image(fake_image, 'result/inversion_EMNIST_image/fake_image.png', normalize=False, range=(-1, 1))
         loss = prior_loss + args.lambda_gt * gt_loss
         loss.backward()
         optimizer.step()
@@ -70,9 +74,7 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
 
     # save the generated images
     fake_image = Generator(z)
-    tvls.save_image(fake_image, 'result/inversion_image/fake_image.png', normalize=True, range=(-1, 1))
-    # save the images and label as pth file
-    torch.save(fake_image, 'result/inversion_image/fake_image.pth')
+    # tvls.save_image(fake_image, 'result/inversion_EMNIST_image/fake_image.png', normalize=True, range=(-1, 1))
 
 
 if __name__ == '__main__':
@@ -91,8 +93,8 @@ if __name__ == '__main__':
 
     classifier.load_state_dict(torch.load('MNIST_Net.pth'))      # load the target model
     evauator.load_state_dict(torch.load('MNIST_Net.pth'))        # load the evaluator
-    # Generator.load_state_dict(torch.load('GAN_Generator.pkl'))         # load the generator
-    # Disc.load_state_dict(torch.load('GAN_Discriminator.pkl'))       # load the discriminator
+    Generator.load_state_dict(torch.load('GAN_EMNISTGenerator.pkl'))         # load the generator
+    Disc.load_state_dict(torch.load('GAN_EMNISTDiscriminator.pkl'))       # load the discriminator
 
     labels = torch.LongTensor(args.batch_size).random_(0, 10).cuda()   # generate random labels
 

@@ -8,7 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
 import torch.nn.functional as F
 from torch.autograd import Variable
-from model import MNIST_Net
+from model import MNIST_Net, Inception_Net
 
 
 def same_seeds(seed):
@@ -55,7 +55,7 @@ test_loader = DataLoader(
     shuffle=False
 )
 
-model = MNIST_Net().to(device)
+model = Inception_Net().to(device)
 optim = torch.optim.Adam(model.parameters(), LR)
 lossf = nn.CrossEntropyLoss()
 
@@ -70,19 +70,19 @@ for epoch in range(EPOCH):
         loss.backward()
         optim.step()
         if step % 200 == 0:
-          for image, label in test_loader:
-            image = image.to(device)
-            label = label.to(device)
-            _, output = model(image)
-            test_loss = lossf(output, label)
-            test_acc = (output.argmax(1) == label).sum().item()/image.size()[0]
-          print(
-              f'EPOCH: {epoch+1:0>{len(str(EPOCH))}}/{EPOCH}',
-              f'STEP: {step+1:0>{len(str(len(train_loader)))}}/{len(train_loader)}',
-              f'Training_LOSS: {loss.item():.4f}',
-              f'Training_ACC: {acc:.4f}',
-              f'Testing_LOSS: {test_loss.item():.4f}',
-              f'Testing_ACC: {test_acc:.4f}',
-          )
+            for image, label in test_loader:
+                image = image.to(device)
+                label = label.to(device)
+                _, output = model(image)
+                test_loss = lossf(output, label)
+                test_acc = (output.argmax(1) == label).sum().item()/image.size()[0]
+            print(
+                f'EPOCH: {epoch+1:0>{len(str(EPOCH))}}/{EPOCH}',
+                f'STEP: {step+1:0>{len(str(len(train_loader)))}}/{len(train_loader)}',
+                f'Training_LOSS: {loss.item():.4f}',
+                f'Training_ACC: {acc:.4f}',
+                f'Testing_LOSS: {test_loss.item():.4f}',
+                f'Testing_ACC: {test_acc:.4f}',
+            )
 
-torch.save(model.state_dict(), 'MNIST_Net.pth')
+torch.save(model.state_dict(), 'Inception_Net.pth')
