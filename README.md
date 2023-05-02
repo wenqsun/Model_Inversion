@@ -11,3 +11,8 @@ Complete the black-box attack implementation. Please find the folder blackbox, a
 Complete the white-box attack implementation. Please find the folder whitebox, and run `python train_inversion.py --num_epoch 200`
 
 Up to now, we assume that we have a generic public dataset to train our GAN and inversion model.
+
+### 2 May
+TODO: Update the model inversion attack on CIFAR10, CIFAR100 datasets
+
+Due to an illness, I will complete this task later.
