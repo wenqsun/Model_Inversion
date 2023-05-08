@@ -12,6 +12,13 @@ Complete the white-box attack implementation. Please find the folder whitebox, a
 
 Up to now, we assume that we have a generic public dataset to train our GAN and inversion model.
 
+<<<<<<< HEAD
 
 ### 8 May
 White-box model inversion attack for CIFAR10 and CIAFAR100 datasets.
+=======
+### 2 May
+TODO: Update the model inversion attack on CIFAR10, CIFAR100 datasets
+
+Due to an illness, I will complete this task later.
+>>>>>>> 9abac9e04134a3782dbb171d0aa35983bc908f1b
