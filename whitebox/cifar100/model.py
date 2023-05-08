@@ -92,7 +92,7 @@ class Discriminator(nn.Module):
 
 # define network for CIFAR10
 class FedAvgCNN(nn.Module):
-    def __init__(self, in_features=1, num_classes=10, dim=1024):
+    def __init__(self, in_features=1, num_classes=10, dim=1600):
         super().__init__()
         self.conv1 = nn.Sequential(nn.Conv2d(in_features,
                         32,
@@ -131,23 +131,63 @@ class FedAvgCNN(nn.Module):
             return F.log_softmax(out, dim = 1), out
 
 class InverseCIFAR10Net(nn.Module):
-    def __init__(self, out_features=1, num_classes=10, dim=1024):
+    def __init__(self, out_features=3, z_dim=100, num_class=10, dim=1600):
         super(InverseCIFAR10Net, self).__init__()
-        self.fc1 = nn.Linear(num_classes, 512)
-        self.fc2 = nn.Linear(512, 1024)
+        self.fc1 = nn.Linear(z_dim + num_class, 512)
+        self.fc2 = nn.Linear(512, dim)
         self.deconv1 = nn.ConvTranspose2d(64, 32, kernel_size=5)
         self.deconv2 = nn.ConvTranspose2d(32, out_features, kernel_size=5)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
-        x = x.view(-1, 64, 4, 4)
+        x = x.view(-1, 64, 5, 5)
         x = F.interpolate(x, scale_factor=2, mode='nearest')
         x = self.deconv1(x)
         x = F.relu(x)
         x = F.interpolate(x, scale_factor=2, mode='nearest')
         x = self.deconv2(x)
         return x
+
+# define discriminator for CIFAR10
+class CIFAR10Discriminator(nn.Module):
+    def __init__(self, in_features=3, num_classes=1, dim=1600):
+        super(CIFAR10Discriminator, self).__init__()
+        self.conv1 = nn.Sequential(nn.Conv2d(in_features,
+                        32,
+                        kernel_size=5,
+                        padding=0,
+                        stride=1,
+                        bias=True),
+            nn.ReLU(inplace=True), 
+            nn.MaxPool2d(kernel_size=(2, 2)))
+        self.conv2 = nn.Sequential(nn.Conv2d(32,
+                        64,
+                        kernel_size=5,
+                        padding=0,
+                        stride=1,
+                        bias=True),
+            nn.ReLU(inplace=True), 
+            nn.MaxPool2d(kernel_size=(2, 2)))
+        self.fc1 = nn.Sequential(
+            nn.Linear(dim, 512), 
+            nn.ReLU(inplace=True)
+            )
+        self.fc2 = nn.Sequential(
+            nn.Linear(512, 128), 
+            nn.ReLU(inplace=True)
+            )
+        self.fc3 = nn.Linear(128, num_classes)
+
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.conv2(out)
+        out = torch.flatten(out, 1)
+        out = self.fc1(out)
+        out = self.fc2(out)
+        out = self.fc3(out)
+
+        return out
 
 if __name__ == '__main__':
     x = torch.zeros((1,10))
