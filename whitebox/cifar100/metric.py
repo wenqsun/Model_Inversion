@@ -78,17 +78,17 @@ if __name__ == "__main__":
     transform = transforms.Compose([
         transforms.Resize((299, 299)),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465,), (0.2023, 0.1994, 0.2010,))
+        transforms.Normalize((0.5070751592371323, 0.48654887331495095, 0.4409178433670343,), (0.2682515741720801, 0.2573637364478126, 0.2770957707973042))
     ])
     transform_resize = transforms.Resize((299, 299))
-    dataset = datasets.CIFAR10(root="../dataset", train=False, transform=transform, download=True)
+    dataset = datasets.CIFAR100(root="../dataset", train=False, transform=transform, download=True)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4)
     real_images = iter(dataloader).next()[0]
     print(f"Real images: {real_images.shape}")
 
     # Load generated images
     if args.method == 'FedDC' or args.method == 'FedMix' or args.method == 'FedReal':
-        fake_images = torch.load(f"./{args.method}/0.1_data.pth")
+        fake_images = torch.load(f"./{args.method}/0.5_data.pth")
         fake_images = fake_images['data']
         # resize fake images
         fake_images = np.array([transform_resize(fake_images[i]).numpy() for i in range(fake_images.shape[0])])

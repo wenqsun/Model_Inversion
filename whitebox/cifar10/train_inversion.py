@@ -33,7 +33,11 @@ def same_seeds(seed):
         torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
-
+torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.enabled = True
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = False
 same_seeds(2023)
 
 def inversion(args, classifier, evaluator, Generator, Disc, labels):
@@ -49,7 +53,7 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
     fake_image = Generator(z)
     # save the original image
     original_image = fake_image.clone().detach()
-    tvls.save_image(original_image, 'result/fedavg/inversion_image/original_image.png', normalize=False, range=(-1, 1))
+    tvls.save_image(original_image, 'result/'+args.FL_algorithm+'/inversion_image/original_image.png', normalize=False, range=(-1, 1))
 
     # optimizer = optim.Adam([z], lr=args.lr, betas=(0.5, 0.999))
     optimizer = optim.Adam(Generator.parameters(), lr=args.lr, betas=(0.5, 0.999))      # optimizer for generator
@@ -73,9 +77,9 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
 
     # save the generated images
     fake_image = Generator(z)
-    tvls.save_image(fake_image, 'result/fedavg/inversion_image/fake_image.png', normalize=False, range=(-1, 1))
+    tvls.save_image(fake_image, 'result/'+args.FL_algorithm+'/inversion_image/fake_image.png', normalize=False, range=(-1, 1))
     # save the images and label as pth file
-    torch.save(fake_image, 'result/fedavg/inversion_image/fake_image.pth')
+    torch.save(fake_image, 'result/'+args.FL_algorithm+'/inversion_image/fake_image.pth')
 
     # test the accuracy of the generated images
     out, _ = classifier(fake_image)
@@ -94,22 +98,25 @@ def TV_prior(image):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=10)
+    parser.add_argument('--batch_size', type=int, default=10000)
     parser.add_argument('--lr', type=float, default=0.0005)
     parser.add_argument('--z_dim', type=int, default=100)
     parser.add_argument('--num_epoch', type=int, default=100)
     parser.add_argument('--lambda_gt', type=int, default=1e7)
     parser.add_argument('--lambda_TV', type=int, default=1)
     parser.add_argument('--lambda_L2', type=int, default=1)
+    parser.add_argument('--FL_algorithm', type=str, default='FedAvg')
     args = parser.parse_args()
 
-    classifier = FedAvgCNN(in_features=3, dim=1600).cuda()      # target model
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    classifier = FedAvgCNN(in_features=3, dim=1600).to(device)      # target model
     evauator = FedAvgCNN(in_features=3, dim=1600).cuda()        # evaluator: evaluate the quality of the generated images, a model with high accuracy
     Generator = InverseCIFAR10Net().cuda()         # generator
     Disc = Discriminator(input_size=3*32*32, n_class=1).cuda()       # discriminator
 
-    classifier.load_state_dict(torch.load('classifier.pth'))      # load the target model
-    evauator.load_state_dict(torch.load('classifier.pth'))        # load the evaluator
+    classifier.load_state_dict(torch.load('result_model/'+ args.FL_algorithm +'/dir_0.1_model_state_dict.pth'))    # load the target model
+    evauator.load_state_dict(torch.load('result_model/'+ args.FL_algorithm +'/dir_0.1_model_state_dict.pth'))        # load the evaluator
     # Generator.load_state_dict(torch.load('GAN_Generator.pkl'))         # load the generator
     # Disc.load_state_dict(torch.load('GAN_Discriminator.pkl'))       # load the discriminator
 
