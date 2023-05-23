@@ -22,9 +22,9 @@ Due to an illness, I will complete this task later.
 Complete white-box model inversion attack for CIFAR10 and CIAFAR100 datasets.
 
 ### 23 May
-In the `\blackbox` folder, you can find the main code `ideal.py` for FedMD and FedED on cifar10 and cifar100 datasets. Just refer the `run.sh` for the usage. Also, you need the targeted model for different methods, which are placed in the `\pretrained` folder. The model required can be downloaded here: https://drive.google.com/drive/folders/1Cqkz4aGR5orTFgbJeVHgEOyS4ToEXe2-?usp=share_link
+In the `\blackbox` folder, you can find the main code `ideal.py` for FedMD and FedED on cifar10 and cifar100 datasets. Just refer the `run.sh` for the usage. And `metric.py` is used to compute the FID score. Also, you need the targeted model for different methods, which are placed in the `\pretrained` folder. The model required can be downloaded here: https://drive.google.com/drive/folders/1Cqkz4aGR5orTFgbJeVHgEOyS4ToEXe2-?usp=share_link
 
-In the `\whitebox` folder, you can find `cifar10` and `cifar100` folders. Each folder contains code for different methods. Just refer the `run.sh` for the usage. Also, you need the targeted model for different methods, which are placed in the `\result_model` folder. The model required can be downloaded here: 
+In the `\whitebox` folder, you can find `cifar10` and `cifar100` folders. Each folder contains code for different methods. Just refer the `run.sh` for the usage. And `metric.py` is used to compute the FID score. Also, you need the targeted model for different methods, which are placed in the `\result_model` folder. The model required can be downloaded here: 
 
 cifar10: https://drive.google.com/drive/folders/1ZqEcc4I5vVTzvSN2xi1IXrF5vTNZht3z?usp=share_link
 
