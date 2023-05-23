@@ -67,6 +67,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--method', type=str, default='FedDC', help='FL method')
     parser.add_argument('--gpu_id', type=int, default=6, help='GPU ID')
+    parser.add_argument('--acc', type=float, default=0.5, help='accuracy of the model')
     args = parser.parse_args()
 
     # Set GPU ID
@@ -81,7 +82,7 @@ if __name__ == "__main__":
         transforms.Normalize((0.5070751592371323, 0.48654887331495095, 0.4409178433670343,), (0.2682515741720801, 0.2573637364478126, 0.2770957707973042))
     ])
     transform_resize = transforms.Resize((299, 299))
-    dataset = datasets.CIFAR100(root="../dataset", train=False, transform=transform, download=True)
+    dataset = datasets.CIFAR100(root="../dataset", train=True, transform=transform, download=True)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4)
     real_images = iter(dataloader).next()[0]
     print(f"Real images: {real_images.shape}")
@@ -94,8 +95,8 @@ if __name__ == "__main__":
         fake_images = np.array([transform_resize(fake_images[i]).numpy() for i in range(fake_images.shape[0])])
         fake_images = torch.from_numpy(fake_images)
         print(f"Fake images: {fake_images.shape}")
-    elif args.method == 'FedAvg' or args.method == 'FedProx':
-        fake_images = torch.load(f'result/{args.method}/inversion_image/fake_image.pth').cpu().detach()
+    elif args.method == 'FedAvg' or args.method == 'FedProx' or args.method == 'FedPAQ' or args.method == 'FedMD' or args.method == 'FedED':
+        fake_images = torch.load(f'result/{args.method}/inversion_image_{args.acc}/fake_image.pth').cpu().detach()
         # resize fake images
         fake_images = np.array([transform_resize(fake_images[i]).numpy() for i in range(fake_images.shape[0])])
         fake_images = torch.from_numpy(fake_images)
