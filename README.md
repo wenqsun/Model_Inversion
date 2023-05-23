@@ -20,3 +20,8 @@ Due to an illness, I will complete this task later.
 
 ### 8 May
 Complete white-box model inversion attack for CIFAR10 and CIAFAR100 datasets.
+
+### 23 May
+In the `\blackbox` folder, you can find the main code `ideal.py` for FedMD and FedED on cifar10 and cifar100 datasets. Just refer the `run.sh` for the usage. Also, you need the targeted model for different methods, which are placed in the `\pretrained` folder. The model required can be downloaded here: 
+
+In the `\whitebox` folder, you can find `cifar10` and `cifar100` folders. Each folder contains code for 
