@@ -11,6 +11,8 @@ from PIL import Image
 import torchvision.utils as tvls
 import argparse
 import os
+import warnings
+warnings.filterwarnings("ignore")
 
 # Define a function to calculate the FID score
 def calculate_fid_score(real_images, generated_images, batch_size=64):

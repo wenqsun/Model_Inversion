@@ -18,9 +18,12 @@ import torchvision.utils as tvls
 import torchvision.datasets as dsets
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
+import torchvision.datasets as datasets
 
 from Model import MNIST_Net, InverseMNISTNet, Discriminator, FedAvgCNN, InverseCIFAR10Net
 from resnet import resnet18
+
+from metric import calculate_fid_score, torch_cov
 
 def same_seeds(seed):
     # Python built-in random module
@@ -34,14 +37,9 @@ def same_seeds(seed):
         torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = True
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.enabled = True
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = False
-same_seeds(2023)
 
-def inversion(args, classifier, evaluator, Generator, Disc, labels):
+
+def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_resize):
 
     gt_labels = torch.zeros(args.batch_size, 100).cuda()
     for i in range(args.batch_size):
@@ -64,7 +62,6 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
     log.write('epoch, loss, gt_loss, prior_loss, TV_loss, L2_loss\n')
     log.flush()
 
-    # optimizer = optim.Adam([z], lr=args.lr, betas=(0.5, 0.999))
     optimizer = optim.Adam(Generator.parameters(), lr=args.lr, betas=(0.5, 0.999))      # optimizer for generator
     criterion = nn.CrossEntropyLoss()
     for epoch in range(1, (args.num_epoch+1)):
@@ -79,7 +76,6 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
 
         D_fake = Disc(fake_image.view(-1, 3*32*32))     # prior result for discriminator
         prior_loss = -torch.mean(D_fake)    # prior loss
-        # print('The fake_out is: {}'.format(fake_out))
         gt_loss = criterion(fake_out, gt_labels)     # gt loss
         TV_loss = TV_prior(fake_image)      # total variation prior
         L2_loss = torch.norm(fake_image, 2)     # L2 loss
@@ -88,13 +84,13 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
         optimizer.step()
         
         print('epoch: {}, loss: {}, gt_loss: {}, prior_loss: {}, TV_loss: {}, L2_loss: {}'.format(epoch, loss.item(), gt_loss.item(), prior_loss.item(), TV_loss.item(), L2_loss.item()))
-        if epoch % 10 == 0:
+        if epoch % 20 == 0:
             # log the loss
             log.write('{},\t{},\t{},\t{},\t{},{}\n'.format(epoch, loss.item(), gt_loss.item(), prior_loss.item(), TV_loss.item(), L2_loss.item()))
             log.flush()
     
-    # read loss from the text, and plot the loss curve
-    log.close()
+    # read loss from the txt, and plot the loss curve
+    # log.close()
     loss_path = data_path + '/loss.png'
     loss = np.loadtxt(data_path + '/log.txt', skiprows=1, delimiter=',')
     plt.figure()
@@ -102,12 +98,6 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
     plt.xlabel('epoch')
     plt.ylabel('gt_loss')
     plt.savefig(loss_path)
-    
-
-    # save the generated images
-    fake_image = Generator(z)
-    tvls.save_image(fake_image, data_path + '/fake_image.png', normalize=False, range=(-1, 1))
-    torch.save(fake_image, data_path + '/fake_image.pth')
     
     # generate the reconstructed images
     torch.save(Generator, data_path + '/Generator.pth')
@@ -118,13 +108,24 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
     for i in range(args.data_num):
         gt_labels[i][labels[i]] = 1       # generate one-hot labels
     z = torch.concat((z, gt_labels), dim=1)     # concatenate the one-hot labels to z
-    fake_image = Generator(z)
+    fake_image = Generator(z).cpu().detach()
+    tvls.save_image(fake_image, data_path + '/generate_image.png', normalize=False, range=(-1, 1))
     torch.save(fake_image, data_path + '/generate_image.pth')
+    # resize the images to 299*299
+    fake_image = np.array([transform_resize(fake_image[i]).numpy() for i in range(fake_image.shape[0])])
+    fake_image = torch.from_numpy(fake_image)
+    print('The shape of the fake image is: {}'.format(fake_image.shape))
 
-    # test the accuracy of the generated images
-    # out, _ = classifier(fake_image)
-    # out = torch.exp(out)
-    # print('The output of the generated images is: {}'.format(out))
+    # get the real images
+    real_image = generate_realdata()
+
+    # compute the FID score
+    fid_score = calculate_fid_score(real_image, fake_image, batch_size=32)
+    print('The FID score is: {}'.format(fid_score))
+    log.write('The FID score is: {}'.format(fid_score))
+    log.flush()
+    log.close()
+
 
 def TV_prior(image):
     # compute the total variation prior
@@ -135,6 +136,22 @@ def TV_prior(image):
     diff4 = image[:,:,:-1,:-1] - image[:,:,1:,1:]
 
     return torch.norm(diff1) + torch.norm(diff2) + torch.norm(diff3) + torch.norm(diff4)
+
+def generate_realdata():
+    batch_size = 10000
+    # Load CIFAR-10 dataset
+    transform = transforms.Compose([
+        transforms.Resize((299, 299)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5070751592371323, 0.48654887331495095, 0.4409178433670343,), (0.2682515741720801, 0.2573637364478126, 0.2770957707973042))
+    ])
+    dataset = datasets.CIFAR100(root="../dataset", train=True, transform=transform, download=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    real_images = iter(dataloader).next()[0]
+
+    print(f"Real images: {real_images.shape}")
+
+    return real_images
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -151,6 +168,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    same_seeds(2023)
 
     classifier = resnet18().cuda()      # target model
     evauator = resnet18().cuda()      # evaluator: evaluate the quality of the generated images, a model with high accuracy
@@ -165,9 +183,8 @@ if __name__ == '__main__':
     print('The model path is: {}'.format(model_path))
     classifier = torch.load(model_path, map_location=device)    # load the target model
     evauator = torch.load(model_path, map_location=device)       # load the evaluator
-    # Generator.load_state_dict(torch.load('GAN_Generator.pkl'))         # load the generator
-    # Disc.load_state_dict(torch.load('GAN_Discriminator.pkl'))       # load the discriminator
 
     labels = torch.LongTensor(args.batch_size).random_(0, 100).cuda()   # generate random labels
+    transform_resize = transforms.Resize((299, 299))   # resize the images to 299*299
 
-    inversion(args, classifier, evauator, Generator, Disc, labels)
+    inversion(args, classifier, evauator, Generator, Disc, labels, transform_resize)
