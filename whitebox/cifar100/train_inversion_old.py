@@ -47,10 +47,10 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
     for i in range(args.batch_size):
         gt_labels[i][labels[i]] = 1       # generate one-hot labels
     print('The ground truth labels are: {}'.format(gt_labels))
-
     z = torch.randn(args.batch_size, args.z_dim).cuda()
     z = Variable(z, requires_grad=True).cuda()
     z = torch.concat((z, gt_labels), dim=1)     # concatenate the one-hot labels to z
+
     fake_image = Generator(z)
     # save the original image
     original_image = fake_image.clone().detach()
@@ -59,20 +59,10 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
         os.makedirs(data_path)
     tvls.save_image(original_image, data_path + '/original_image.png', normalize=False, range=(-1, 1))
 
-    # log the loss
-    log = open(data_path + '/log.txt', 'w')
-    log.write('epoch, loss, gt_loss, prior_loss, TV_loss, L2_loss\n')
-    log.flush()
-
     # optimizer = optim.Adam([z], lr=args.lr, betas=(0.5, 0.999))
     optimizer = optim.Adam(Generator.parameters(), lr=args.lr, betas=(0.5, 0.999))      # optimizer for generator
     criterion = nn.CrossEntropyLoss()
-    for epoch in range(1, (args.num_epoch+1)):
-        # generate the noise z
-        z = torch.randn(args.batch_size, args.z_dim).cuda()
-        z = Variable(z, requires_grad=True).cuda()
-        z = torch.concat((z, gt_labels), dim=1)     # concatenate the one-hot labels to z
-
+    for epoch in range(args.num_epoch):
         optimizer.zero_grad()
         fake_image = Generator(z)
         _, fake_out = classifier(fake_image)
@@ -88,43 +78,17 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels):
         optimizer.step()
         
         print('epoch: {}, loss: {}, gt_loss: {}, prior_loss: {}, TV_loss: {}, L2_loss: {}'.format(epoch, loss.item(), gt_loss.item(), prior_loss.item(), TV_loss.item(), L2_loss.item()))
-        if epoch % 10 == 0:
-            # log the loss
-            log.write('{},\t{},\t{},\t{},\t{},{}\n'.format(epoch, loss.item(), gt_loss.item(), prior_loss.item(), TV_loss.item(), L2_loss.item()))
-            log.flush()
-    
-    # read loss from the text, and plot the loss curve
-    log.close()
-    loss_path = data_path + '/loss.png'
-    loss = np.loadtxt(data_path + '/log.txt', skiprows=1, delimiter=',')
-    plt.figure()
-    plt.plot(loss[:, 0], loss[:, 2], label='gt_loss')
-    plt.xlabel('epoch')
-    plt.ylabel('gt_loss')
-    plt.savefig(loss_path)
-    
 
     # save the generated images
     fake_image = Generator(z)
     tvls.save_image(fake_image, data_path + '/fake_image.png', normalize=False, range=(-1, 1))
+    # save the images and label as pth file
     torch.save(fake_image, data_path + '/fake_image.pth')
-    
-    # generate the reconstructed images
-    torch.save(Generator, data_path + '/Generator.pth')
-    z = torch.randn(args.data_num, args.z_dim).cuda()
-    z = Variable(z, requires_grad=True).cuda()
-    labels = torch.LongTensor(args.data_num).random_(0, 100).cuda()
-    gt_labels = torch.zeros(args.data_num, 100).cuda()
-    for i in range(args.data_num):
-        gt_labels[i][labels[i]] = 1       # generate one-hot labels
-    z = torch.concat((z, gt_labels), dim=1)     # concatenate the one-hot labels to z
-    fake_image = Generator(z)
-    torch.save(fake_image, data_path + '/generate_image.pth')
 
     # test the accuracy of the generated images
-    # out, _ = classifier(fake_image)
-    # out = torch.exp(out)
-    # print('The output of the generated images is: {}'.format(out))
+    out, _ = classifier(fake_image)
+    out = torch.exp(out)
+    print('The output of the generated images is: {}'.format(out))
 
 def TV_prior(image):
     # compute the total variation prior
@@ -147,7 +111,6 @@ if __name__ == '__main__':
     parser.add_argument('--lambda_L2', type=int, default=1)
     parser.add_argument('--FL_algorithm', type=str, default='FedAvg')
     parser.add_argument('--acc', type=str, default='66.95')
-    parser.add_argument('--data_num', type=int, default=10000)
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

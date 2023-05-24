@@ -83,7 +83,7 @@ if __name__ == "__main__":
     ])
     transform_resize = transforms.Resize((299, 299))
     dataset = datasets.CIFAR100(root="../dataset", train=True, transform=transform, download=True)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     real_images = iter(dataloader).next()[0]
     print(f"Real images: {real_images.shape}")
 
@@ -96,7 +96,7 @@ if __name__ == "__main__":
         fake_images = torch.from_numpy(fake_images)
         print(f"Fake images: {fake_images.shape}")
     elif args.method == 'FedAvg' or args.method == 'FedProx' or args.method == 'FedPAQ' or args.method == 'FedMD' or args.method == 'FedED':
-        fake_images = torch.load(f'result/{args.method}/inversion_image_{args.acc}/fake_image.pth').cpu().detach()
+        fake_images = torch.load(f'result/{args.method}/inversion_image_{args.acc}/generate_image.pth').cpu().detach()
         # resize fake images
         fake_images = np.array([transform_resize(fake_images[i]).numpy() for i in range(fake_images.shape[0])])
         fake_images = torch.from_numpy(fake_images)

@@ -30,4 +30,10 @@ cifar10: https://drive.google.com/drive/folders/1ZqEcc4I5vVTzvSN2xi1IXrF5vTNZht3
 
 cifar100: https://drive.google.com/drive/folders/1zPqEt4pp7fL4yGrFnmAGzIlSsaDYZJ2L?usp=sharing
 
+whitebox attack is highly referenced from https://github.com/MKariya1998/GMI-Attack
 
+blackbox attack is high referenced from https://github.com/SonyResearch/IDEAL
+
+
+### 24 May
+Fix some errors in the code `\whitebox\cifar100\train_inversion.py`, mainly about the random noise inputs and generator. Now you can find the new code in `\whitebox\cifar100\train_inversion.py`. 
