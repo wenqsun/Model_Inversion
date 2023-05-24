@@ -37,3 +37,5 @@ blackbox attack is high referenced from https://github.com/SonyResearch/IDEAL
 
 ### 24 May
 Fix some errors in the code `\whitebox\cifar100\train_inversion.py`, mainly about the random noise inputs and generator. Now you can find the new code in `\whitebox\cifar100\train_inversion.py`. 
+
+Now you can refer to `\whitebox\cifar100\train_inversion.py` to directly obtain the FID score.
