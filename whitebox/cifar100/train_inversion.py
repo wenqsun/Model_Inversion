@@ -52,7 +52,7 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
     fake_image = Generator(z)
     # save the original image
     original_image = fake_image.clone().detach()
-    data_path = 'result/'+args.FL_algorithm+'/inversion_image_'+args.acc
+    data_path = 'result/'+args.FL_algorithm+'/inversion_image_'+args.acc+'_epoch_'+str(args.num_epoch)
     if not os.path.exists(data_path):
         os.makedirs(data_path)
     tvls.save_image(original_image, data_path + '/original_image.png', normalize=False, range=(-1, 1))
@@ -140,11 +140,14 @@ def TV_prior(image):
 def generate_realdata():
     batch_size = 10000
     # Load CIFAR-10 dataset
-    transform = transforms.Compose([
-        transforms.Resize((299, 299)),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5070751592371323, 0.48654887331495095, 0.4409178433670343,), (0.2682515741720801, 0.2573637364478126, 0.2770957707973042))
-    ])
+    transform=transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(15),
+            transforms.Resize((299, 299)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5070751592371323, 0.48654887331495095, 0.4409178433670343,), (0.2682515741720801, 0.2573637364478126, 0.2770957707973042),)
+            ])
     dataset = datasets.CIFAR100(root="../dataset", train=True, transform=transform, download=True)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     real_images = iter(dataloader).next()[0]
@@ -152,6 +155,27 @@ def generate_realdata():
     print(f"Real images: {real_images.shape}")
 
     return real_images
+
+def test(args, model, test_loader, device):
+    model.eval()
+    test_loss = 0
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for batch_idx, data in enumerate(test_loader):
+            inputs = data[0].to(device)
+            targets = data[1].to(device)
+            _, outputs = model(inputs)
+            loss = F.cross_entropy(outputs, targets)
+            test_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total += targets.size(0)
+            correct += predicted.eq(targets).sum().item()
+
+    print('Test dataset: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)'.format(
+        test_loss / len(test_loader), correct, len(test_loader.dataset),
+        100. * correct / len(test_loader.dataset)))
+    return 100. * correct / len(test_loader.dataset)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -186,5 +210,14 @@ if __name__ == '__main__':
 
     labels = torch.LongTensor(args.batch_size).random_(0, 100).cuda()   # generate random labels
     transform_resize = transforms.Resize((299, 299))   # resize the images to 299*299
+
+    # test the target model
+    test_transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5070751592371323, 0.48654887331495095, 0.4409178433670343,), (0.2682515741720801, 0.2573637364478126, 0.2770957707973042),)
+            ])
+    test_loader = DataLoader(datasets.CIFAR100(root="../dataset", train=False, transform=test_transform, download=True), batch_size=1000, shuffle=False)
+    test(args, classifier, test_loader, device)
+
 
     inversion(args, classifier, evauator, Generator, Disc, labels, transform_resize)
