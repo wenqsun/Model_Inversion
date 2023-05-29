@@ -149,6 +149,25 @@ class InverseCIFAR10Net(nn.Module):
         x = self.deconv2(x)
         return x
 
+class InverseCIFAR100Net(nn.Module):
+    def __init__(self, out_features=3, z_dim=100, num_class=10, dim=1600):
+        super(InverseCIFAR100Net, self).__init__()
+        self.fc1 = nn.Linear(z_dim, 512)
+        self.fc2 = nn.Linear(512, dim)
+        self.deconv1 = nn.ConvTranspose2d(64, 32, kernel_size=5)
+        self.deconv2 = nn.ConvTranspose2d(32, out_features, kernel_size=5)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = x.view(-1, 64, 5, 5)
+        x = F.interpolate(x, scale_factor=2, mode='nearest')
+        x = self.deconv1(x)
+        x = F.relu(x)
+        x = F.interpolate(x, scale_factor=2, mode='nearest')
+        x = self.deconv2(x)
+        return x
+
 # define discriminator for CIFAR10
 class CIFAR10Discriminator(nn.Module):
     def __init__(self, in_features=3, num_classes=1, dim=1600):

@@ -38,6 +38,59 @@ def same_seeds(seed):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
+def TV_prior(image):
+    # compute the total variation prior
+    # image: [batch_size, 3, 32, 32]
+    diff1 = image[:,:,:,:-1] - image[:,:,:,1:]
+    diff2 = image[:,:,:-1,:] - image[:,:,1:,:]
+    diff3 = image[:,:,1:,:-1] - image[:,:,:-1,1:]
+    diff4 = image[:,:,:-1,:-1] - image[:,:,1:,1:]
+
+    return torch.norm(diff1) + torch.norm(diff2) + torch.norm(diff3) + torch.norm(diff4)
+
+def test(args, model, test_loader, device):
+    model.eval()
+    test_loss = 0
+    correct = 0
+    total = 0
+    label_list = [0 for i in range(args.num_class)]
+    with torch.no_grad():
+        for batch_idx, data in enumerate(test_loader):
+            inputs = data[0].to(device)
+            targets = data[1].to(device)
+            _, outputs = model(inputs)
+            # print('the shape of inputs, targets, outputs are: {}, {}, {}'.format(inputs.shape, targets.shape, outputs.shape))
+            loss = F.cross_entropy(outputs, targets)
+            test_loss += loss.item()
+            _, predicted = outputs.max(1)
+            for i in range(targets.size(0)):
+                label_list[targets[i].item()] += 1
+            total += targets.size(0)
+            correct += predicted.eq(targets).sum().item()
+
+    print('Test dataset: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)'.format(
+        test_loss / len(test_loader), correct, len(test_loader.dataset),
+        100. * correct / len(test_loader.dataset)))
+    return 100. * correct / len(test_loader.dataset), label_list
+
+# build a dataset for generated dataset with labels
+class GeneratedDataset(Dataset):
+    def __init__(self, data, label, transform=None):
+        self.data = data
+        self.label = label
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        image = self.data[idx]
+        label = self.label[idx]
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label
+
 
 def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_resize, target_acc, device):
 
@@ -59,13 +112,14 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
 
     # log the loss
     log = open(data_path + '/log.txt', 'w')
-    log.write('epoch, loss, gt_loss, prior_loss, TV_loss, L2_loss\n')
+    log.write('epoch, loss, gt_loss, prior_loss, TV_loss, L2_loss, infor_loss, feature_loss\n')
     log.flush()
 
     # log the fid score
     real_image = torch.load('result/real_images.pth')      # get the real images to compute the fid score
     fid_list = []
     attack_acc_list = []
+    generated_label_list = []
     best_loss = 10000000
 
     optimizer = optim.Adam(Generator.parameters(), lr=args.lr, betas=(0.5, 0.999))      # optimizer for generator
@@ -82,14 +136,16 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
 
         optimizer.zero_grad()
         fake_image = Generator(z)
-        _, fake_out = classifier(fake_image)
+        fake_out, feature = classifier(fake_image, return_feature=True)
 
         D_fake = Disc(fake_image.view(-1, 3*32*32))     # prior result for discriminator
         prior_loss = -torch.mean(D_fake)    # prior loss
         gt_loss = criterion(fake_out, gt_targets)     # gt loss
         TV_loss = TV_prior(fake_image)      # total variation prior
         L2_loss = torch.norm(fake_image, 2)     # L2 loss
-        loss = 0 * prior_loss + args.lambda_gt * gt_loss + args.lambda_TV * TV_loss + args.lambda_L2 * L2_loss
+        infor_loss = torch.sum(F.softmax(fake_out, dim=1) * torch.log(F.softmax(fake_out, dim=1)))     # information loss
+        activation_loss = -feature.abs().mean()     # activation loss
+        loss = args.lambda_gt * gt_loss + args.lambda_TV * TV_loss + args.lambda_L2 * L2_loss + args.lambda_infor * infor_loss + args.lambda_activation * activation_loss
         loss.backward()
         optimizer.step()
         
@@ -120,8 +176,10 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
             # test the inference quality of generated images
             dataset = GeneratedDataset(fake_image_original, labels)
             dataloader = DataLoader(dataset, batch_size=1000, shuffle=False)
-            attack_acc = test(args, evaluator, dataloader, device)
+            attack_acc, label_list = test(args, evaluator, dataloader, device)
             print('The attack accuracy is: {}'.format(attack_acc))
+            print('The label list is: {}'.format(label_list))
+            generated_label_list.append(label_list)
             attack_acc_list.append(attack_acc)
 
         if loss < best_loss:
@@ -153,10 +211,11 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
     plt.figure()
     plt.plot(np.arange(args.log_interval, (args.num_epoch+1), args.log_interval), attack_acc_list)
     plt.xlabel('epoch')
-    plt.ylabel('attack_acc')
+    plt.ylabel('attack_acc (%)')
     plt.savefig(attack_acc_path)
     
     # log the fid score and attack accuracy
+    print('---------------------------------------------------------------------')
     print('The best FID score is: {}'.format(min(fid_list)))
     print('The best attack accuracy is: {}'.format(max(attack_acc_list)))
     log.write('The FID score is: {}\n'.format(fid_list))
@@ -168,56 +227,6 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
     log.close()
 
 
-def TV_prior(image):
-    # compute the total variation prior
-    # image: [batch_size, 3, 32, 32]
-    diff1 = image[:,:,:,:-1] - image[:,:,:,1:]
-    diff2 = image[:,:,:-1,:] - image[:,:,1:,:]
-    diff3 = image[:,:,1:,:-1] - image[:,:,:-1,1:]
-    diff4 = image[:,:,:-1,:-1] - image[:,:,1:,1:]
-
-    return torch.norm(diff1) + torch.norm(diff2) + torch.norm(diff3) + torch.norm(diff4)
-
-def test(args, model, test_loader, device):
-    model.eval()
-    test_loss = 0
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for batch_idx, data in enumerate(test_loader):
-            inputs = data[0].to(device)
-            targets = data[1].to(device)
-            _, outputs = model(inputs)
-            # print('the shape of inputs, targets, outputs are: {}, {}, {}'.format(inputs.shape, targets.shape, outputs.shape))
-            loss = F.cross_entropy(outputs, targets)
-            test_loss += loss.item()
-            _, predicted = outputs.max(1)
-            total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
-
-    print('Test dataset: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)'.format(
-        test_loss / len(test_loader), correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
-    return 100. * correct / len(test_loader.dataset)
-
-# build a dataset for generated dataset with labels
-class GeneratedDataset(Dataset):
-    def __init__(self, data, label, transform=None):
-        self.data = data
-        self.label = label
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        image = self.data[idx]
-        label = self.label[idx]
-        if self.transform:
-            image = self.transform(image)
-
-        return image, label
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=1000)
@@ -227,11 +236,14 @@ if __name__ == '__main__':
     parser.add_argument('--lambda_gt', type=int, default=1e7)
     parser.add_argument('--lambda_TV', type=int, default=1)
     parser.add_argument('--lambda_L2', type=int, default=1)
+    parser.add_argument('--lambda_infor', type=int, default=0)
+    parser.add_argument('--lambda_feature', type=int, default=0)
     parser.add_argument('--FL_algorithm', type=str, default='FedAvg')
     parser.add_argument('--acc', type=str, default='66.95')
     parser.add_argument('--data_num', type=int, default=10000)
     parser.add_argument('--log_interval', type=int, default=500)
     parser.add_argument('--dp_level', type=str, default='0.01')
+    parser.add_argument('--num_class', type=int, default=10)
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -265,7 +277,7 @@ if __name__ == '__main__':
             transforms.Normalize((0.4914, 0.4822, 0.4465,), (0.2023, 0.1994, 0.2010,))
             ])
     test_loader = DataLoader(datasets.CIFAR10(root="../dataset", train=False, transform=test_transform, download=True), batch_size=1000, shuffle=False)
-    target_acc = test(args, classifier, test_loader, device)
+    target_acc, _ = test(args, classifier, test_loader, device)
     # test the accuracy of evaluator
     print('test the accuracy of evaluator')
     test(args, evauator, test_loader, device)
