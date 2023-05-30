@@ -101,14 +101,11 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
 
     z = torch.randn(args.batch_size, args.z_dim).cuda()
     z = Variable(z, requires_grad=True).cuda()
-    if args.use_condition:
-        z = torch.concat((z, gt_targets), dim=1)     # concatenate the one-hot labels to z
-    else:
-        z = z
+    z = torch.concat((z, gt_targets), dim=1)     # concatenate the one-hot labels to z
     fake_image = Generator(z)
     # save the original image
     original_image = fake_image.clone().detach()
-    data_path = 'result/'+args.FL_algorithm+'/inversion_image_'+args.acc+'_epoch_'+str(args.num_epoch)+'_use_condition_'+str(args.use_condition)
+    data_path = 'result/'+args.FL_algorithm+'/inversion_image_'+args.acc+'_epoch_'+str(args.num_epoch)+'_use_DenseGen_'+str(args.use_dense)
     if not os.path.exists(data_path):
         os.makedirs(data_path)
     tvls.save_image(original_image, data_path + '/original_image.png', normalize=False, range=(-1, 1))
@@ -135,10 +132,7 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
         gt_targets = torch.zeros(args.batch_size, 100).cuda()
         for i in range(args.batch_size):
             gt_targets[i][labels[i]] = 1       # generate one-hot labels
-        if args.use_condition:
-            z = torch.concat((z, gt_targets), dim=1)     # concatenate the one-hot labels to z
-        else:
-            z = z
+        z = torch.concat((z, gt_targets), dim=1)     # concatenate the one-hot labels to z
 
         optimizer.zero_grad()
         fake_image = Generator(z)
@@ -166,10 +160,7 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
             gt_labels = torch.zeros(args.data_num, 100).cuda()
             for i in range(args.data_num):
                 gt_labels[i][labels[i]] = 1       # generate one-hot labels
-            if args.use_condition:
-                z = torch.concat((z, gt_labels), dim=1)     # concatenate the one-hot labels to z
-            else:
-                z = z
+            z = torch.concat((z, gt_labels), dim=1)     # concatenate the one-hot labels to z
             fake_image = Generator(z).cpu().detach()
             fake_image_original = fake_image.clone()
             # resize the images to 299*299
@@ -252,7 +243,7 @@ if __name__ == '__main__':
     parser.add_argument('--log_interval', type=int, default=500)
     parser.add_argument('--dp_level', type=str, default='0.01')
     parser.add_argument('--num_class', type=int, default=100)
-    parser.add_argument('--use_condition', action='store_true', help='use conditional GAN')
+    parser.add_argument('--use_dense', action='store_true', help='use dense Generator')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -260,10 +251,10 @@ if __name__ == '__main__':
 
     classifier = resnet18().cuda()      # target model
     evauator = resnet18().cuda()      # evaluator: evaluate the quality of the generated images, a model with high accuracy
-    if args.use_condition:
-        Generator = InverseCIFAR10Net(z_dim = args.z_dim, num_class=100).cuda()         # generator
+    if args.use_dense:
+        Generator = InverseCIFAR100Net(z_dim = args.z_dim, num_class=100).cuda()         # generator
     else:
-        Generator = InverseCIFAR100Net(z_dim = args.z_dim).cuda()         # generator
+        Generator = InverseCIFAR10Net(z_dim = args.z_dim, num_class=100).cuda()         # generator
     Disc = Discriminator(input_size=3*32*32, n_class=1).cuda()       # discriminator
 
     file_lis = os.listdir('result_model/'+ args.FL_algorithm)
