@@ -13,6 +13,50 @@ import argparse
 import os
 import warnings
 warnings.filterwarnings("ignore")
+import math
+
+# compute PSNR for two channels
+# def PSNR(original, compressed):
+#     mse = np.mean((original - compressed) ** 2)
+#     if mse == 0:
+#         return 100
+#     max_pixel = 1
+#     psnr = 10 * math.log10(max_pixel **2 / mse)
+#     return psnr
+
+# compute PSNR for three channels
+def PSNR(img1, img2):
+    # Convert images to float32
+    img1 = img1.astype(np.float32)
+    img2 = img2.astype(np.float32)
+    
+    # Compute MSE (Mean Squared Error) for each channel
+    mse_r = np.mean((img1[0, :,:] - img2[0, :,:]) ** 2)
+    mse_g = np.mean((img1[1, :,:] - img2[1, :,:]) ** 2)
+    mse_b = np.mean((img1[2, :,:] - img2[2, :,:]) ** 2)
+    
+    # Compute average MSE across all channels
+    mse = (mse_r + mse_g + mse_b) / 3.0
+    
+    # Compute PSNR using the formula: PSNR = 20 * log10(MAX_I) - 10 * log10(MSE)
+    max_i = 1   # maximum pixel intensity for 8-bit images
+    psnr = 20 * np.log10(max_i) - 10 * np.log10(mse)
+    
+    return psnr
+
+def compute_PSNR(real_images, generated_images):
+    best_psnr_list = []
+    for i in range(generated_images.shape[0]):
+        best_psnr = 0
+        for j in range(real_images.shape[0]):
+            if PSNR(real_images[j], generated_images[i]) > best_psnr:
+                best_psnr = PSNR(real_images[j], generated_images[i])
+                best_index = j
+        
+        best_psnr_list.append(best_psnr)
+        # print('best_psnr: ', best_psnr)
+
+    return np.mean(best_psnr_list)
 
 # Define a function to calculate the FID score
 def calculate_fid_score(real_images, generated_images, batch_size=64):

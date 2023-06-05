@@ -20,10 +20,10 @@ import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 import torchvision.datasets as datasets
 
-from Model import MNIST_Net, InverseMNISTNet, Discriminator, FedAvgCNN, InverseCIFAR10Net, InverseCIFAR100Net
-from resnet import resnet18
+from Model import MNIST_Net, InverseMNISTNet, Discriminator, FedAvgCNN, InverseCIFAR10Net
 
-from metric import calculate_fid_score, torch_cov, compute_PSNR, PSNR
+
+from metric import calculate_fid_score, torch_cov, PSNR, compute_PSNR 
 
 def same_seeds(seed):
     # Python built-in random module
@@ -92,20 +92,20 @@ class GeneratedDataset(Dataset):
         return image, label
 
 
-def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_resize, target_acc, device):
+def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_resize, invTrans, target_acc, device):
 
-    gt_targets = torch.zeros(args.batch_size, 100).cuda()
+    gt_targets = torch.zeros(args.batch_size, 10).to(device)
     for i in range(args.batch_size):
         gt_targets[i][labels[i]] = 1       # generate one-hot labels
     print('The ground truth labels are: {}'.format(gt_targets))
 
-    z = torch.randn(args.batch_size, args.z_dim).cuda()
-    z = Variable(z, requires_grad=True).cuda()
+    z = torch.randn(args.batch_size, args.z_dim).to(device)
+    z = Variable(z, requires_grad=True).to(device)
     z = torch.concat((z, gt_targets), dim=1)     # concatenate the one-hot labels to z
     fake_image = Generator(z)
     # save the original image
     original_image = fake_image.clone().detach()
-    data_path = 'result/'+args.FL_algorithm+'/inversion_image_'+args.acc+'_epoch_'+str(args.num_epoch)+'_use_DenseGen_'+str(args.use_dense)
+    data_path = 'result/'+args.FL_algorithm+'/inversion_image_'+args.acc+'_epoch_'+str(args.num_epoch)+'_batchsize_'+str(args.batch_size)
     if not os.path.exists(data_path):
         os.makedirs(data_path)
     tvls.save_image(original_image, data_path + '/original_image.png', normalize=False, range=(-1, 1))
@@ -116,7 +116,7 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
     log.flush()
 
     # log the fid score
-    real_image = torch.load('result/real_images.pth')      # get the real images to compute the fid score
+    real_image = torch.load('result/real_images_299*299.pth')      # get the real images to compute the fid score
     real_image_32 = torch.load('result/real_images_32*32.pth')
     fid_list = []
     attack_acc_list = []
@@ -127,11 +127,11 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
     optimizer = optim.Adam(Generator.parameters(), lr=args.lr, betas=(0.5, 0.999))      # optimizer for generator
     criterion = nn.CrossEntropyLoss()
     for epoch in range(1, (args.num_epoch+1)):
-        # generate the noise z
-        z = torch.randn(args.batch_size, args.z_dim).cuda()
-        z = Variable(z, requires_grad=True).cuda()
-        labels = torch.LongTensor(args.batch_size).random_(0, 100).cuda()
-        gt_targets = torch.zeros(args.batch_size, 100).cuda()
+        # generate the noise z and targets
+        z = torch.randn(args.batch_size, args.z_dim).to(device)
+        z = Variable(z, requires_grad=True).to(device)
+        labels = torch.LongTensor(args.batch_size).random_(0, 10).to(device)  # generate random labels
+        gt_targets = torch.zeros(args.batch_size, 10).to(device)
         for i in range(args.batch_size):
             gt_targets[i][labels[i]] = 1       # generate one-hot labels
         z = torch.concat((z, gt_targets), dim=1)     # concatenate the one-hot labels to z
@@ -147,22 +147,22 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
         L2_loss = torch.norm(fake_image, 2)     # L2 loss
         infor_loss = torch.sum(F.softmax(fake_out, dim=1) * torch.log(F.softmax(fake_out, dim=1)))     # information loss
         feature_loss = -feature.abs().mean()     # activation loss
-        loss = 0 * prior_loss + args.lambda_gt * gt_loss + args.lambda_TV * TV_loss + args.lambda_L2 * L2_loss + args.lambda_infor * infor_loss + args.lambda_feature * feature_loss
+        loss = args.lambda_gt * gt_loss + args.lambda_TV * TV_loss + args.lambda_L2 * L2_loss + args.lambda_infor * infor_loss + args.lambda_feature * feature_loss
         loss.backward()
         optimizer.step()
         
         if epoch % 20 == 0:
-            print('epoch: {}, loss: {}, gt_loss: {}, prior_loss: {}, TV_loss: {}, L2_loss: {}'.format
-                  (epoch, loss.item(), gt_loss.item(), prior_loss.item(), TV_loss.item(), L2_loss.item(), infor_loss.item(), feature_loss.item()))
+            print('epoch: {}, loss: {}, gt_loss: {}, prior_loss: {}, TV_loss: {}, L2_loss: {}, infor_loss: {}, feature_loss: {}'
+                  .format(epoch, loss.item(), gt_loss.item(), prior_loss.item(), TV_loss.item(), L2_loss.item(), infor_loss.item(), feature_loss.item()))
             # log the loss
             log.write('{},\t{},\t{},\t{},\t{},{}\n'.format(epoch, loss.item(), gt_loss.item(), prior_loss.item(), TV_loss.item(), L2_loss.item()))
             log.flush()
-        if epoch % args.log_interval == 0:
-            # compute the fid and PSNR score every 500 epoch
-            z = torch.randn(args.data_num, args.z_dim).cuda()
-            z = Variable(z, requires_grad=True).cuda()
-            labels = torch.LongTensor(args.data_num).random_(0, 100).cuda()
-            gt_labels = torch.zeros(args.data_num, 100).cuda()
+        if epoch % args.log_interval== 0:
+            # compute the fid score every 500 epoch
+            z = torch.randn(args.data_num, args.z_dim).to(device)
+            z = Variable(z, requires_grad=True).to(device)
+            labels = torch.LongTensor(args.data_num).random_(0, 10).to(device)
+            gt_labels = torch.zeros(args.data_num, 10).to(device)
             for i in range(args.data_num):
                 gt_labels[i][labels[i]] = 1       # generate one-hot labels
             z = torch.concat((z, gt_labels), dim=1)     # concatenate the one-hot labels to z
@@ -175,7 +175,7 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
             fid_score = calculate_fid_score(real_image, fake_image, batch_size=32)
             print('The fid score is: {}'.format(fid_score))
             fid_list.append(fid_score)
-            
+
             # test the inference quality of generated images
             dataset = GeneratedDataset(fake_image_original, labels)
             dataloader = DataLoader(dataset, batch_size=1000, shuffle=False)
@@ -185,7 +185,7 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
             generated_label_list.append(label_list)
             attack_acc_list.append(attack_acc)
 
-            # compute the PSNR score
+            # compute the PSNR
             fake_image = fake_image_original[:1000]    # select 1000 fake images to compute the PSNR
             real_image_32 = real_image_32[:1000]      # select 1000 real images to compute the PSNR
             fake_image = np.array([invTrans(fake_image[i]).numpy() for i in range(fake_image.shape[0])])
@@ -269,45 +269,47 @@ if __name__ == '__main__':
     parser.add_argument('--data_num', type=int, default=10000)
     parser.add_argument('--log_interval', type=int, default=500)
     parser.add_argument('--dp_level', type=str, default='0.01')
-    parser.add_argument('--num_class', type=int, default=100)
-    parser.add_argument('--use_dense', action='store_true', help='use dense Generator')
+    parser.add_argument('--num_class', type=int, default=10)
+    parser.add_argument('--dir', type=float, default=0.01)
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     same_seeds(2023)
 
-    classifier = resnet18().cuda()      # target model
-    evauator = resnet18().cuda()      # evaluator: evaluate the quality of the generated images, a model with high accuracy
-    if args.use_dense:
-        Generator = InverseCIFAR100Net(z_dim = args.z_dim, num_class=100).cuda()         # generator
-    else:
-        Generator = InverseCIFAR10Net(z_dim = args.z_dim, num_class=100).cuda()         # generator
-    Disc = Discriminator(input_size=3*32*32, n_class=1).cuda()       # discriminator
+    classifier = FedAvgCNN().to(device)     # target model
+    evauator = FedAvgCNN().to(device)      # evaluator: evaluate the quality of the generated images, a model with high accuracy
+    Generator = InverseCIFAR10Net(z_dim = args.z_dim, num_class=10).to(device)        # generator
+    Disc = Discriminator(input_size=3*32*32, n_class=1).to(device)       # discriminator
 
     file_lis = os.listdir('result_model/'+ args.FL_algorithm)
     print('The file list is: {}'.format(file_lis))
-    for file in file_lis:
-        if args.acc in file:
-            model_path = 'result_model/'+ args.FL_algorithm + '/' + file
+    if 'DP' in args.FL_algorithm:
+        for file in file_lis:
+            if args.dp_level in file and 'state_dict' in file:
+                model_path = 'result_model/'+ args.FL_algorithm + '/' + file
+                classifier.load_state_dict(torch.load(model_path, map_location=device))    # load the target model
+    else:
+        for file in file_lis:
+            if args.acc in file:
+                model_path = 'result_model/'+ args.FL_algorithm + '/' + file
+                classifier = torch.load(model_path, map_location=device)    # load the target model
     print('The model path is: {}'.format(model_path))
-    classifier = torch.load(model_path, map_location=device)    # load the target model
-    evauator = torch.load('result_model/Central/epoch_1000_dir_0.5_model_test.pth')       # load the evaluator
-
-    labels = torch.LongTensor(args.batch_size).random_(0, 100).cuda()   # generate random labels
+    evauator = torch.load('result_model/epoch_1000_centralized_test_92.37.pth')       # load the evaluator
+    labels = torch.LongTensor(args.batch_size).random_(0, 10).to(device)   # generate random labels
     transform_resize = transforms.Resize((299, 299))   # resize the images to 299*299
 
     # test the target model
     test_transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.5070751592371323, 0.48654887331495095, 0.4409178433670343,), (0.2682515741720801, 0.2573637364478126, 0.2770957707973042),)
+            transforms.Normalize((0.4376821, 0.4437697, 0.47280442), (0.19803012, 0.20101562, 0.19703614))
             ])
-    invTrans = transforms.Compose([transforms.Normalize(mean = [ -0.5070751592371323/0.2682515741720801, -0.48654887331495095/0.2573637364478126, -0.4409178433670343/0.2770957707973042 ], 
-                                                    std = [ 1/0.2682515741720801, 1/0.2573637364478126, 1/0.2770957707973042 ]), 
+    invTrans = transforms.Compose([transforms.Normalize(mean = [ -0.4376821/0.19803012, -0.4437697/0.20101562, -0.47280442/0.19703614 ], 
+                                                    std = [ 1/0.19803012, 1/0.20101562, 1/0.19703614 ]), 
                             ])       # inverse the normalization
-    test_loader = DataLoader(datasets.CIFAR100(root="../dataset", train=False, transform=test_transform, download=True), batch_size=1000, shuffle=False)
+    test_loader = DataLoader(datasets.SVHN('../dataset', split='test', transform=test_transform, download = True), batch_size=1000, shuffle=False)
     target_acc, _ = test(args, classifier, test_loader, device)
-    evauator_acc, _ = test(args, evauator, test_loader, device)
-    print('The accuracy of evaluation model is: {}'.format(evauator_acc))
+    # test the accuracy of evaluator
+    print('test the accuracy of evaluator')
+    test(args, evauator, test_loader, device)
 
-
-    inversion(args, classifier, evauator, Generator, Disc, labels, transform_resize, target_acc, device)
+    inversion(args, classifier, evauator, Generator, Disc, labels, transform_resize, invTrans, target_acc, device)

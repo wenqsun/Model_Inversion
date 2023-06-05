@@ -11,7 +11,7 @@ def PSNR(original, compressed):
     mse = np.mean((original - compressed) ** 2)
     if mse == 0:
         return 100
-    max_pixel = 1
+    max_pixel = 255.0
     psnr = 20 * math.log10(max_pixel / math.sqrt(mse))
     return psnr
 
@@ -23,19 +23,19 @@ if __name__ == '__main__':
     args = parser.parse_args()
     transform_train = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.5070751592371323, 0.48654887331495095, 0.4409178433670343,), (0.2682515741720801, 0.2573637364478126, 0.2770957707973042))
+            transforms.Normalize((0.4914, 0.4822, 0.4465,), (0.2023, 0.1994, 0.2010,))
         ])
 
-    original_dataset = torchvision.datasets.CIFAR100(root=args.data_path, train=True, download=True, transform=transform_train)
+    original_dataset = torchvision.datasets.CIFAR10(root=args.data_path, train=True, download=True, transform=transform_train)
     original_loader = torch.utils.data.DataLoader(original_dataset, batch_size=1000, shuffle=False, num_workers=2)
     original_data = iter(original_loader).next()[0].numpy()
-    tvls.save_image(torch.from_numpy(original_data[0]).float(), 'original/original_images.png', nrow=1)
+    tvls.save_image(torch.from_numpy(original_data[1]).float(), 'original/original_images.png', nrow=1)
     print('the shape of original_data:', original_data.shape)
     # print('the value of original_data:', original_data[0])
 
     # load generated images
     if args.method == 'FedDC' or args.method == 'FedMix' or args.method == 'FedReal':
-        generated_image = torch.load(args.method + '/0.5_data.pth')
+        generated_image = torch.load(args.method + '/0.1_data.pth')
         generated_image = generated_image['data'].numpy()
         tvls.save_image(torch.from_numpy(generated_image[1]).float(), args.method+'/fake_image.png', nrow=1)
     elif args.method == 'FedAvg' or args.method == 'FedProx':

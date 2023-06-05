@@ -23,7 +23,7 @@ import torchvision.datasets as datasets
 from Model import MNIST_Net, InverseMNISTNet, Discriminator, FedAvgCNN, InverseCIFAR10Net
 
 
-from metric import calculate_fid_score, torch_cov
+from metric import calculate_fid_score, torch_cov, compute_PSNR, PSNR
 
 def same_seeds(seed):
     # Python built-in random module
@@ -92,7 +92,7 @@ class GeneratedDataset(Dataset):
         return image, label
 
 
-def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_resize, target_acc, device):
+def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_resize, invTrans, target_acc, device):
 
     gt_targets = torch.zeros(args.batch_size, 10).cuda()
     for i in range(args.batch_size):
@@ -116,9 +116,11 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
     log.flush()
 
     # log the fid score
-    real_image = torch.load('result/real_images.pth')      # get the real images to compute the fid score
+    real_image = torch.load('result/real_images.pth')      # get the real images to compute the fid score, 3*299*299
+    real_image_32 = torch.load('result/real_images_32*32.pth')   # get the real images to compute the PSNR score, 3*32*32
     fid_list = []
     attack_acc_list = []
+    psnr_list = []
     generated_label_list = []
     best_loss = 10000000
 
@@ -144,15 +146,16 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
         TV_loss = TV_prior(fake_image)      # total variation prior
         L2_loss = torch.norm(fake_image, 2)     # L2 loss
         infor_loss = torch.sum(F.softmax(fake_out, dim=1) * torch.log(F.softmax(fake_out, dim=1)))     # information loss
-        activation_loss = -feature.abs().mean()     # activation loss
-        loss = args.lambda_gt * gt_loss + args.lambda_TV * TV_loss + args.lambda_L2 * L2_loss + args.lambda_infor * infor_loss + args.lambda_activation * activation_loss
+        feature_loss = -feature.abs().mean()     # activation loss
+        loss = args.lambda_gt * gt_loss + args.lambda_TV * TV_loss + args.lambda_L2 * L2_loss + args.lambda_infor * infor_loss + args.lambda_feature * feature_loss
         loss.backward()
         optimizer.step()
         
         if epoch % 20 == 0:
-            print('epoch: {}, loss: {}, gt_loss: {}, prior_loss: {}, TV_loss: {}, L2_loss: {}'.format(epoch, loss.item(), gt_loss.item(), prior_loss.item(), TV_loss.item(), L2_loss.item()))
+            print('epoch: {}, loss: {}, gt_loss: {}, prior_loss: {}, TV_loss: {}, L2_loss: {}, infor_loss: {}, feature_loss: {}'.format
+                  (epoch, loss.item(), gt_loss.item(), prior_loss.item(), TV_loss.item(), L2_loss.item(), infor_loss.item(), feature_loss.item()))
             # log the loss
-            log.write('{},\t{},\t{},\t{},\t{},{}\n'.format(epoch, loss.item(), gt_loss.item(), prior_loss.item(), TV_loss.item(), L2_loss.item()))
+            log.write('{},\t{},\t{},\t{},\t{},{},\t{},\t{}\n'.format(epoch, loss.item(), gt_loss.item(), prior_loss.item(), TV_loss.item(), L2_loss.item(), infor_loss.item(), feature_loss.item()))
             log.flush()
         if epoch % args.log_interval== 0:
             # compute the fid score every 500 epoch
@@ -181,6 +184,20 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
             print('The label list is: {}'.format(label_list))
             generated_label_list.append(label_list)
             attack_acc_list.append(attack_acc)
+
+            # compute the PSNR score
+            fake_image = fake_image_original[:1000]    # select 1000 fake images to compute the PSNR
+            real_image_32 = real_image_32[:1000]      # select 1000 real images to compute the PSNR
+            fake_image = np.array([invTrans(fake_image[i]).numpy() for i in range(fake_image.shape[0])])
+            fake_image = torch.from_numpy(fake_image)
+            real_image_32 = np.array([invTrans(real_image_32[i]).numpy() for i in range(real_image_32.shape[0])])
+            real_image_32 = torch.from_numpy(real_image_32)
+            print('The shape of the fake image is: {}'.format(fake_image.shape))
+            print('The shape of the real image is: {}'.format(real_image_32.shape))
+            psnr = compute_PSNR(real_image_32.numpy(), fake_image.numpy())
+            print('The PSNR is: {}'.format(psnr))
+            psnr_list.append(psnr)
+            
 
         if loss < best_loss:
             best_loss = loss
@@ -213,6 +230,14 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
     plt.xlabel('epoch')
     plt.ylabel('attack_acc (%)')
     plt.savefig(attack_acc_path)
+
+    # plot the PSNR curve
+    psnr_path = data_path + '/psnr.png'
+    plt.figure()
+    plt.plot(np.arange(args.log_interval, (args.num_epoch+1), args.log_interval), psnr_list)
+    plt.xlabel('epoch')
+    plt.ylabel('PSNR')
+    plt.savefig(psnr_path)
     
     # log the fid score and attack accuracy
     print('---------------------------------------------------------------------')
@@ -222,6 +247,8 @@ def inversion(args, classifier, evaluator, Generator, Disc, labels, transform_re
     log.write('The best FID score is: {}\n'.format(min(fid_list)))
     log.write('The attack accuracy is: {}\n'.format(attack_acc_list))
     log.write('The best attack accuracy is: {}\n'.format(max(attack_acc_list)))
+    log.write('The PSNR is: {}\n'.format(psnr_list))
+    log.write('The best PSNR is: {}\n'.format(max(psnr_list)))
     log.write('The target model accuracy is {}\n'.format(target_acc))
     log.flush()
     log.close()
@@ -276,10 +303,13 @@ if __name__ == '__main__':
             transforms.ToTensor(),
             transforms.Normalize((0.4914, 0.4822, 0.4465,), (0.2023, 0.1994, 0.2010,))
             ])
+    invTrans = transforms.Compose([transforms.Normalize(mean = [ -0.4914/0.2023, -0.4822/0.1994, -0.4465/0.2010 ], 
+                                                    std = [ 1/0.2023, 1/0.1994, 1/0.2010 ]), 
+                            ])       # inverse the normalization
     test_loader = DataLoader(datasets.CIFAR10(root="../dataset", train=False, transform=test_transform, download=True), batch_size=1000, shuffle=False)
     target_acc, _ = test(args, classifier, test_loader, device)
     # test the accuracy of evaluator
     print('test the accuracy of evaluator')
     test(args, evauator, test_loader, device)
 
-    inversion(args, classifier, evauator, Generator, Disc, labels, transform_resize, target_acc, device)
+    inversion(args, classifier, evauator, Generator, Disc, labels, transform_resize, invTrans, target_acc, device)

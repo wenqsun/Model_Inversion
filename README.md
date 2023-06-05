@@ -3,7 +3,7 @@ This is a code implementation for model inversion attack, both in white-box and 
 
 ## Update Log
 ### 21 Apr
-Black-box attack implementation. reference: https://github.com/yziqi/adversarial-model-inversion/tree/master
+Black-box attack implementation. reference: https://github.com/yziqi/adversarial-model-inversion/tree/master 
 
 ### 23 Apr
 Complete the black-box attack implementation. Please find the folder blackbox, and run `python train_inversion.py --save-model --epochs 50 --lr 0.0005 --log-interval 100`.
@@ -39,3 +39,8 @@ blackbox attack is high referenced from https://github.com/SonyResearch/IDEAL
 Fix some errors in the code `\whitebox\cifar100\train_inversion.py`, mainly about the random noise inputs and generator. Now you can find the new code in `\whitebox\cifar100\train_inversion.py`. 
 
 Now you can refer to `\whitebox\cifar100\train_inversion.py` to directly obtain the FID score.
+
+### 4 June
+Now we build the white-box model inversion for different FL algorithms and datasets, including cifar10, cifar100 and svhn. Also we use three metrics to measure the model inversion performance. The code is in the `\whitebox` folder. You can refer to the `run_inversion.sh` for the usage.
+
+The method we use is highly encouraged by the paper: [Data-Free Learning of Student Networks](https://arxiv.org/abs/1904.01186)
